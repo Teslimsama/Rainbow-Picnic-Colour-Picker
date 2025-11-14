@@ -1,10 +1,15 @@
 <?php
-/* rainbow-picnic.php – Locked rainbow colour picker with e-mail */
+/* rainbow-picnic.php – Secure, locked colour picker with PHPMailer */
 
-/* ---- 0. Start session --------------------------------------------------- */
 session_start();
 
-/* ---- 1. Rainbow palette ------------------------------------------------ */
+// --- 1. Autoload PHPMailer -------------------------------------------------
+require 'vendor/autoload.php';
+
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+// --- 2. Rainbow palette ----------------------------------------------------
 $rainbow = [
     '#FF6F61', // Coral
     '#FFB366', // Peach
@@ -15,33 +20,65 @@ $rainbow = [
     '#FF99CC', // Bubblegum
 ];
 
-/* ---- 2. Helper: pick a colour (only once) ----------------------------- */
+// --- 3. Helper: pick random colour -----------------------------------------
 function pickColour(array $palette): string
 {
     return $palette[array_rand($palette)];
 }
 
-/* ---- 3. Decide what colour to show ------------------------------------ */
+// --- 4. Get or set locked colour -------------------------------------------
 $selected = $_SESSION['rainbow_colour'] ?? null;
+$emailSent = $_SESSION['email_sent'] ?? false;
 
-/* If the user pressed the button AND no colour is stored yet → pick + lock */
+// --- 5. Process form submission (only if no colour locked) ---------------
 if (isset($_POST['pick']) && $selected === null) {
-    $selected = pickColour($rainbow);
-    $_SESSION['rainbow_colour'] = $selected;
+    $rawEmail = $_POST['email'] ?? '';
 
-    /* ---- 4. Send e-mail (first time only) --------------------------- */
-    $email = $_POST['email'] ?? '';
-    if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $subject = "Your Rainbow Picnic Colour";
-        $message = "Hello!\n\nYour locked rainbow colour for the picnic is:\n\n"
-            . "$selected\n\n"
-            . "See you under the rainbow!\n"
-            . "-- The Picnic Bot";
-        $headers = "From: no-reply@yourdomain.com\r\nReply-To: no-reply@yourdomain.com";
+    // ---- Validate & sanitize email ---------------------------------------
+    $email = filter_var(trim($rawEmail), FILTER_VALIDATE_EMAIL);
+    if (!$email) {
+        $error = "Please enter a valid email address.";
+    } else {
+        // ---- Pick and lock colour ----------------------------------------
+        $selected = pickColour($rainbow);
+        $_SESSION['rainbow_colour'] = $selected;
 
-        // For demo purposes we just log it – replace with mail() in prod
-        error_log("MAIL TO: $email | SUBJECT: $subject | BODY: $message");
-        // mail($email, $subject, $message, $headers);
+        // ---- Send email securely via PHPMailer (only once) ---------------
+        if (!$emailSent) {
+            $mail = new PHPMailer(true);
+            try {
+                // --- Server settings (edit for your SMTP) -------------------
+                $mail->isSMTP();
+                $mail->Host       = 'smtp.gmail.com';     // Change to your SMTP
+                $mail->SMTPAuth   = true;
+                $mail->Username   = 'your-email@gmail.com';   // SMTP username
+                $mail->Password   = 'your-app-password';      // App password
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                $mail->Port       = 587;
+
+                // --- Recipients ------------------------------------------------
+                $mail->setFrom('no-reply@picnic.example', 'Rainbow Picnic Bot');
+                $mail->addAddress($email);
+
+                // --- Content ---------------------------------------------------
+                $mail->isHTML(false);
+                $mail->Subject = "Your Rainbow Picnic Colour is Locked!";
+                $mail->Body    = "Hello!\n\n"
+                    . "Your official rainbow picnic colour is:\n\n"
+                    . "   $selected\n\n"
+                    . "This colour is now LOCKED for the event.\n"
+                    . "Bring something in this shade! 🌈\n\n"
+                    . "See you at the picnic!\n"
+                    . "-- The Rainbow Picnic Team";
+
+                $mail->send();
+                $_SESSION['email_sent'] = true;
+                $emailSent = true;
+            } catch (Exception $e) {
+                error_log("Mailer Error: {$mail->ErrorInfo}");
+                $error = "Sorry, we couldn't send the email. Try again later.";
+            }
+        }
     }
 }
 ?>
@@ -51,6 +88,7 @@ if (isset($_POST['pick']) && $selected === null) {
 <head>
     <meta charset="UTF-8">
     <title>Rainbow Picnic – Locked Colour</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {
             font-family: system-ui, sans-serif;
@@ -78,11 +116,16 @@ if (isset($_POST['pick']) && $selected === null) {
             font-size: 1.2rem;
             padding: .6rem 1rem;
             margin: 0 .3rem;
+            border-radius: .5rem;
+        }
+
+        input[type=email] {
+            border: 1px solid #ccc;
+            width: 260px;
         }
 
         button {
             border: none;
-            border-radius: .5rem;
             background: #333;
             color: #fff;
             cursor: pointer;
@@ -95,6 +138,12 @@ if (isset($_POST['pick']) && $selected === null) {
         .locked {
             color: #28a745;
             font-weight: bold;
+            font-size: 1.1rem;
+        }
+
+        .error {
+            color: #d33;
+            margin: 1rem 0;
         }
 
         footer {
@@ -107,27 +156,34 @@ if (isset($_POST['pick']) && $selected === null) {
 
 <body>
 
-    <h1>Platoon 6 Rainbow Picnic Colour Picker</h1>
+    <h1>🌈 Rainbow Picnic Colour Picker</h1>
 
     <?php if ($selected): ?>
-        <!-- ---- Colour is already locked --------------------------------- -->
+        <!-- Colour is LOCKED -->
         <div class="swatch" style="background-color:<?php echo htmlspecialchars($selected); ?>;"></div>
         <p class="code"><?php echo htmlspecialchars($selected); ?></p>
-        <p class="locked">Your colour is LOCKED for this picnic!</p>
+        <p class="locked">Your colour is LOCKED!</p>
+        <?php if ($emailSent): ?>
+            <p>Confirmation email sent!</p>
+        <?php endif; ?>
 
     <?php else: ?>
-        <!-- ---- First visit – show form ----------------------------------- -->
-        <p>Pick a colour **once** – it will be locked and e-mailed to you.</p>
+        <!-- First visit – show form -->
+        <p>Pick a colour <strong>once</strong> – it will be locked and emailed to you.</p>
+
+        <?php if (!empty($error)): ?>
+            <p class="error"><?php echo htmlspecialchars($error); ?></p>
+        <?php endif; ?>
 
         <form method="post">
             <input type="email" name="email" placeholder="your@email.com" required
-                style="width:260px;">
+                value="<?php echo isset($_POST['email']) ? htmlspecialchars($_POST['email']) : ''; ?>">
             <button type="submit" name="pick" value="1">Pick My Colour!</button>
         </form>
     <?php endif; ?>
 
     <footer>
-        <p>Perfect for planning your next rainbow-themed picnic!</p>
+        <p>Perfect for planning your next rainbow-themed picnic! 🎉</p>
     </footer>
 
 </body>
