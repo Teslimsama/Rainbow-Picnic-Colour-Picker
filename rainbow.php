@@ -1,83 +1,207 @@
 <?php
-/* rainbow-picnic.php – Secure, locked colour picker with PHPMailer */
+/* rainbow-picnic.php – Locked colour picker + DB storage + PHPMailer */
 
 session_start();
 
-// --- 1. Autoload PHPMailer -------------------------------------------------
+// ---------------------------------------------------------------------
+// 0. Config – UPDATE THESE!
+// ---------------------------------------------------------------------
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'rainbow');
+define('DB_USER', 'root');
+define('DB_PASS', '');
+
+define('SMTP_HOST', 'smtp.gmail.com');
+define('SMTP_USER', 'your-email@gmail.com');
+define('SMTP_PASS', 'your-app-password');
+define('SMTP_FROM',  'no-reply@picnic.example');
+define('SMTP_NAME',  'Rainbow Picnic Bot');
+
+// ---------------------------------------------------------------------
+// 1. Composer autoload (run once: composer require phpmailer/phpmailer)
+// ---------------------------------------------------------------------
 require 'vendor/autoload.php';
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-// --- 2. Rainbow palette ----------------------------------------------------
-$rainbow = [
-    '#FF6F61', // Coral
-    '#FFB366', // Peach
-    '#FFFF99', // Lemon
-    '#B2E69A', // Mint
-    '#88D8E8', // Sky
-    '#B19CD9', // Lavender
-    '#FF99CC', // Bubblegum
-];
-
-// --- 3. Helper: pick random colour -----------------------------------------
-function pickColour(array $palette): string
-{
-    return $palette[array_rand($palette)];
+// ---------------------------------------------------------------------
+// 2. PDO Connection (with error handling)
+// ---------------------------------------------------------------------
+try {
+    $pdo = new PDO(
+        "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4",
+        DB_USER,
+        DB_PASS,
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+} catch (PDOException $e) {
+    die("Database connection failed. Check config.");
 }
 
-// --- 4. Get or set locked colour -------------------------------------------
-$selected = $_SESSION['rainbow_colour'] ?? null;
-$emailSent = $_SESSION['email_sent'] ?? false;
+// ---------------------------------------------------------------------
+// 3. Colour palette – hex → name
+// ---------------------------------------------------------------------
+$palette = [
+    // Warm tones
+    '#FF0000' => 'Red',
+    '#FF4F4F' => 'Tomato Red',
+    '#FF7F50' => 'Coral',
+    '#FF8C00' => 'Orange',
+    '#FFA07A' => 'Light Salmon',
+    '#FDBA74' => 'Peach',
+    '#FFD700' => 'Gold',
+    '#FFF275' => 'Soft Yellow',
 
-// --- 5. Process form submission (only if no colour locked) ---------------
-if (isset($_POST['pick']) && $selected === null) {
+    // Greens
+    '#006400' => 'Dark Green',
+    '#228B22' => 'Forest Green',
+    '#32CD32' => 'Lime Green',
+    '#8FBC8F' => 'Sage Green',
+    '#98FB98' => 'Pastel Green',
+    '#B2E69A' => 'Mint Green',
+
+    // Blues
+    '#0000FF' => 'Blue',
+    '#1E90FF' => 'Bright Blue',
+    '#4169E1' => 'Royal Blue',
+    '#87CEEB' => 'Sky Blue',
+    '#ADD8E6' => 'Light Blue',
+    '#00BFFF' => 'Deep Sky Blue',
+    '#5A5FFF' => 'Periwinkle',
+
+    // Purples
+    '#800080' => 'Purple',
+    '#8A2BE2' => 'Blue Violet',
+    '#9370DB' => 'Amethyst',
+    '#B19CD9' => 'Lavender',
+    '#D8B7DD' => 'Lilac',
+
+    // Pinks
+    '#FFC0CB' => 'Pink',
+    '#FF69B4' => 'Hot Pink',
+    '#FFB6C1' => 'Soft Pink',
+    '#FF99CC' => 'Bubblegum Pink',
+    '#EC407A' => 'Berry Pink',
+
+    // Earth tones
+    '#8B4513' => 'Saddle Brown',
+    '#A0522D' => 'Rust',
+    '#CD853F' => 'Tan',
+    '#D2B48C' => 'Khaki',
+    '#F5DEB3' => 'Wheat',
+
+    // Neutrals
+    '#000000' => 'Black',
+    '#4A4A4A' => 'Charcoal',
+    '#808080' => 'Gray',
+    '#D3D3D3' => 'Light Gray',
+    '#FFFFFF' => 'White',
+    '#F5F5F5' => 'Off White',
+];
+
+// ---------------------------------------------------------------------
+// 4. Helper – pick random colour
+// ---------------------------------------------------------------------
+function pickColour(array $palette): array
+{
+    $hex  = array_rand($palette);
+    $name = $palette[$hex];
+    return [$hex, $name];
+}
+
+// ---------------------------------------------------------------------
+// 5. Load from DB if already picked
+// ---------------------------------------------------------------------
+$selectedHex   = $_SESSION['rainbow_hex']   ?? null;
+$selectedName  = $_SESSION['rainbow_name']  ?? null;
+$emailSent     = $_SESSION['email_sent']    ?? false;
+
+if (!$selectedHex && isset($_POST['email'])) {
+    $email = filter_var(trim($_POST['email']), FILTER_VALIDATE_EMAIL);
+    if ($email) {
+        // Check DB first
+        $stmt = $pdo->prepare("SELECT hex, name, email_sent FROM picnic_guests WHERE email = ?");
+        $stmt->execute([$email]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row) {
+            // Already picked → load from DB
+            $selectedHex  = $row['hex'];
+            $selectedName = $row['name'];
+            $emailSent    = (bool)$row['email_sent'];
+
+            // Sync session
+            $_SESSION['rainbow_hex']   = $selectedHex;
+            $_SESSION['rainbow_name']  = $selectedName;
+            $_SESSION['email_sent']    = $emailSent;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// 6. Form submission – pick & store
+// ---------------------------------------------------------------------
+if (isset($_POST['pick']) && !$selectedHex) {
     $rawEmail = $_POST['email'] ?? '';
+    $email    = filter_var(trim($rawEmail), FILTER_VALIDATE_EMAIL);
 
-    // ---- Validate & sanitize email ---------------------------------------
-    $email = filter_var(trim($rawEmail), FILTER_VALIDATE_EMAIL);
     if (!$email) {
         $error = "Please enter a valid email address.";
     } else {
-        // ---- Pick and lock colour ----------------------------------------
-        $selected = pickColour($rainbow);
-        $_SESSION['rainbow_colour'] = $selected;
+        // Pick new colour
+        [$hex, $name] = pickColour($palette);
 
-        // ---- Send email securely via PHPMailer (only once) ---------------
-        if (!$emailSent) {
-            $mail = new PHPMailer(true);
-            try {
-                // --- Server settings (edit for your SMTP) -------------------
-                $mail->isSMTP();
-                $mail->Host       = 'smtp.gmail.com';     // Change to your SMTP
-                $mail->SMTPAuth   = true;
-                $mail->Username   = 'your-email@gmail.com';   // SMTP username
-                $mail->Password   = 'your-app-password';      // App password
-                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                $mail->Port       = 587;
+        // Insert into DB (ignore if already exists)
+        $stmt = $pdo->prepare("
+            INSERT INTO picnic_guests (email, hex, name, email_sent)
+            VALUES (?, ?, ?, 0)
+            ON DUPLICATE KEY UPDATE hex = VALUES(hex), name = VALUES(name), email_sent = 0
+        ");
+        $stmt->execute([$email, $hex, $name]);
 
-                // --- Recipients ------------------------------------------------
-                $mail->setFrom('no-reply@picnic.example', 'Rainbow Picnic Bot');
-                $mail->addAddress($email);
+        // Update session
+        $selectedHex  = $hex;
+        $selectedName = $name;
+        $_SESSION['rainbow_hex']   = $hex;
+        $_SESSION['rainbow_name']  = $name;
+        $_SESSION['email_sent']    = false;
 
-                // --- Content ---------------------------------------------------
-                $mail->isHTML(false);
-                $mail->Subject = "Your Rainbow Picnic Colour is Locked!";
-                $mail->Body    = "Hello!\n\n"
-                    . "Your official rainbow picnic colour is:\n\n"
-                    . "   $selected\n\n"
-                    . "This colour is now LOCKED for the event.\n"
-                    . "Bring something in this shade! 🌈\n\n"
-                    . "See you at the picnic!\n"
-                    . "-- The Rainbow Picnic Team";
+        // Send e-mail (once)
+        $mail = new PHPMailer(true);
+        try {
+            $mail->isSMTP();
+            $mail->Host       = SMTP_HOST;
+            $mail->SMTPAuth   = true;
+            $mail->Username   = SMTP_USER;
+            $mail->Password   = SMTP_PASS;
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = 587;
 
-                $mail->send();
-                $_SESSION['email_sent'] = true;
-                $emailSent = true;
-            } catch (Exception $e) {
-                error_log("Mailer Error: {$mail->ErrorInfo}");
-                $error = "Sorry, we couldn't send the email. Try again later.";
-            }
+            $mail->setFrom(SMTP_FROM, SMTP_NAME);
+            $mail->addAddress($email);
+
+            $mail->isHTML(false);
+            $mail->Subject = "Your Rainbow Picnic Colour is Locked!";
+            $mail->Body    = "Hello!\n\n"
+                . "Your official rainbow picnic colour is:\n\n"
+                . "   $hex  –  $name\n\n"
+                . "This colour is now LOCKED for the event.\n"
+                . "Bring something in this shade!\n\n"
+                . "See you at the picnic!\n"
+                . "-- The Rainbow Picnic Team";
+
+            $mail->send();
+
+            // Mark email as sent in DB
+            $pdo->prepare("UPDATE picnic_guests SET email_sent = 1 WHERE email = ?")
+                ->execute([$email]);
+
+            $_SESSION['email_sent'] = true;
+            $emailSent = true;
+        } catch (Exception $e) {
+            error_log("PHPMailer error: {$mail->ErrorInfo}");
+            $error = "Could not send email. Your colour is saved, but email failed.";
         }
     }
 }
@@ -109,6 +233,12 @@ if (isset($_POST['pick']) && $selected === null) {
             font-size: 2rem;
             font-weight: bold;
             margin: 1rem 0;
+        }
+
+        .name {
+            font-size: 1.5rem;
+            margin: .5rem 0;
+            color: #444;
         }
 
         input[type=email],
@@ -156,20 +286,21 @@ if (isset($_POST['pick']) && $selected === null) {
 
 <body>
 
-    <h1>🌈 Rainbow Picnic Colour Picker</h1>
+    <h1>Rainbow Picnic Colour Picker</h1>
 
-    <?php if ($selected): ?>
-        <!-- Colour is LOCKED -->
-        <div class="swatch" style="background-color:<?php echo htmlspecialchars($selected); ?>;"></div>
-        <p class="code"><?php echo htmlspecialchars($selected); ?></p>
+    <?php if ($selectedHex): ?>
+        <div class="swatch" style="background-color:<?php echo htmlspecialchars($selectedHex); ?>;"></div>
+        <p class="code"><?php echo htmlspecialchars($selectedHex); ?></p>
+        <p class="name"><?php echo htmlspecialchars($selectedName); ?></p>
         <p class="locked">Your colour is LOCKED!</p>
         <?php if ($emailSent): ?>
-            <p>Confirmation email sent!</p>
+            <p>Confirmation e-mail sent!</p>
+        <?php elseif (isset($error)): ?>
+            <p class="error"><?php echo htmlspecialchars($error); ?></p>
         <?php endif; ?>
 
     <?php else: ?>
-        <!-- First visit – show form -->
-        <p>Pick a colour <strong>once</strong> – it will be locked and emailed to you.</p>
+        <p>Pick a colour <strong>once</strong> – it will be locked and e‑mailed to you.</p>
 
         <?php if (!empty($error)): ?>
             <p class="error"><?php echo htmlspecialchars($error); ?></p>
@@ -183,7 +314,7 @@ if (isset($_POST['pick']) && $selected === null) {
     <?php endif; ?>
 
     <footer>
-        <p>Perfect for planning your next rainbow-themed picnic! 🎉</p>
+        <p>Perfect for planning your next rainbow-themed picnic!</p>
     </footer>
 
 </body>
