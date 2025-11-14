@@ -1,7 +1,10 @@
 <?php
-/* rainbow-picnic.php – Random rainbow color selector */
+/* rainbow-picnic.php – Locked rainbow colour picker with e-mail */
 
-/* 1. Define a rainbow-friendly palette (you can add/remove colors) */
+/* ---- 0. Start session --------------------------------------------------- */
+session_start();
+
+/* ---- 1. Rainbow palette ------------------------------------------------ */
 $rainbow = [
     '#FF6F61', // Coral
     '#FFB366', // Peach
@@ -12,12 +15,34 @@ $rainbow = [
     '#FF99CC', // Bubblegum
 ];
 
-/* 2. Pick a random color (or keep the previous one if the form was submitted) */
-$selected = $rainbow[array_rand($rainbow)];
+/* ---- 2. Helper: pick a colour (only once) ----------------------------- */
+function pickColour(array $palette): string
+{
+    return $palette[array_rand($palette)];
+}
 
-/* 3. If the user pressed the button, pick a fresh one */
-if (isset($_POST['new'])) {
-    $selected = $rainbow[array_rand($rainbow)];
+/* ---- 3. Decide what colour to show ------------------------------------ */
+$selected = $_SESSION['rainbow_colour'] ?? null;
+
+/* If the user pressed the button AND no colour is stored yet → pick + lock */
+if (isset($_POST['pick']) && $selected === null) {
+    $selected = pickColour($rainbow);
+    $_SESSION['rainbow_colour'] = $selected;
+
+    /* ---- 4. Send e-mail (first time only) --------------------------- */
+    $email = $_POST['email'] ?? '';
+    if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $subject = "Your Rainbow Picnic Colour";
+        $message = "Hello!\n\nYour locked rainbow colour for the picnic is:\n\n"
+            . "$selected\n\n"
+            . "See you under the rainbow!\n"
+            . "-- The Picnic Bot";
+        $headers = "From: no-reply@yourdomain.com\r\nReply-To: no-reply@yourdomain.com";
+
+        // For demo purposes we just log it – replace with mail() in prod
+        error_log("MAIL TO: $email | SUBJECT: $subject | BODY: $message");
+        // mail($email, $subject, $message, $headers);
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -25,7 +50,7 @@ if (isset($_POST['new'])) {
 
 <head>
     <meta charset="UTF-8">
-    <title>Rainbow Picnic Color Picker</title>
+    <title>Rainbow Picnic – Locked Colour</title>
     <style>
         body {
             font-family: system-ui, sans-serif;
@@ -48,9 +73,14 @@ if (isset($_POST['new'])) {
             margin: 1rem 0;
         }
 
+        input[type=email],
         button {
             font-size: 1.2rem;
-            padding: .8rem 1.5rem;
+            padding: .6rem 1rem;
+            margin: 0 .3rem;
+        }
+
+        button {
             border: none;
             border-radius: .5rem;
             background: #333;
@@ -60,6 +90,11 @@ if (isset($_POST['new'])) {
 
         button:hover {
             background: #555;
+        }
+
+        .locked {
+            color: #28a745;
+            font-weight: bold;
         }
 
         footer {
@@ -72,18 +107,27 @@ if (isset($_POST['new'])) {
 
 <body>
 
-    <h1>🌈 Rainbow Picnic Color Picker</h1>
+    <h1>Platoon 6 Rainbow Picnic Colour Picker</h1>
 
-    <div class="swatch" style="background-color:<?php echo htmlspecialchars($selected); ?>;"></div>
+    <?php if ($selected): ?>
+        <!-- ---- Colour is already locked --------------------------------- -->
+        <div class="swatch" style="background-color:<?php echo htmlspecialchars($selected); ?>;"></div>
+        <p class="code"><?php echo htmlspecialchars($selected); ?></p>
+        <p class="locked">Your colour is LOCKED for this picnic!</p>
 
-    <p class="code"><?php echo htmlspecialchars($selected); ?></p>
+    <?php else: ?>
+        <!-- ---- First visit – show form ----------------------------------- -->
+        <p>Pick a colour **once** – it will be locked and e-mailed to you.</p>
 
-    <form method="post">
-        <button type="submit" name="new" value="1">Pick another!</button>
-    </form>
+        <form method="post">
+            <input type="email" name="email" placeholder="your@email.com" required
+                style="width:260px;">
+            <button type="submit" name="pick" value="1">Pick My Colour!</button>
+        </form>
+    <?php endif; ?>
 
     <footer>
-        <p>Perfect for planning your next rainbow-themed picnic! 🎉</p>
+        <p>Perfect for planning your next rainbow-themed picnic!</p>
     </footer>
 
 </body>
