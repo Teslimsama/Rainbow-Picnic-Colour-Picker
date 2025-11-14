@@ -22,34 +22,70 @@ if (isset($_POST['new'])) {
 ?>
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>Rainbow Picnic Color Picker</title>
     <style>
-        body {font-family: system-ui, sans-serif; text-align:center; margin:2rem; background:#fafafa;}
-        .swatch {width:300px; height:300px; margin:2rem auto; border-radius:1rem; box-shadow:0 8px 20px rgba(0,0,0,.15);}
-        .code {font-size:2rem; font-weight:bold; margin:1rem 0;}
-        button {font-size:1.2rem; padding:.8rem 1.5rem; border:none; border-radius:.5rem;
-                background:#333; color:#fff; cursor:pointer;}
-        button:hover {background:#555;}
-        footer {margin-top:3rem; color:#777; font-size:.9rem;}
+        body {
+            font-family: system-ui, sans-serif;
+            text-align: center;
+            margin: 2rem;
+            background: #fafafa;
+        }
+
+        .swatch {
+            width: 300px;
+            height: 300px;
+            margin: 2rem auto;
+            border-radius: 1rem;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, .15);
+        }
+
+        .code {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 1rem 0;
+        }
+
+        button {
+            font-size: 1.2rem;
+            padding: .8rem 1.5rem;
+            border: none;
+            border-radius: .5rem;
+            background: #333;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #555;
+        }
+
+        footer {
+            margin-top: 3rem;
+            color: #777;
+            font-size: .9rem;
+        }
     </style>
 </head>
+
 <body>
 
-<h1>🌈 Rainbow Picnic Color Picker</h1>
+    <h1>🌈 Rainbow Picnic Color Picker</h1>
 
-<div class="swatch" style="background-color:<?php echo htmlspecialchars($selected); ?>;"></div>
+    <div class="swatch" style="background-color:<?php echo htmlspecialchars($selected); ?>;"></div>
 
-<p class="code"><?php echo htmlspecialchars($selected); ?></p>
+    <p class="code"><?php echo htmlspecialchars($selected); ?></p>
 
-<form method="post">
-    <button type="submit" name="new" value="1">Pick another!</button>
-</form>
+    <form method="post">
+        <button type="submit" name="new" value="1">Pick another!</button>
+    </form>
 
-<footer>
-    <p>Perfect for planning your next rainbow-themed picnic! 🎉</p>
-</footer>
+    <footer>
+        <p>Perfect for planning your next rainbow-themed picnic! 🎉</p>
+    </footer>
 
 </body>
+
 </html>
