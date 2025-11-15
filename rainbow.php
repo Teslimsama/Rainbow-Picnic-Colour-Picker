@@ -6,16 +6,17 @@ session_start();
 // ---------------------------------------------------------------------
 // 0. Config – UPDATE THESE (you already did)
 // ---------------------------------------------------------------------
-define('DB_HOST', 'sdb-h.hosting.stackcp.net');
-define('DB_NAME', 'rainbow-3138366a5d');
-define('DB_USER', 'rainman');
-define('DB_PASS', 'vt4xe19n3c');
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'rainbow');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 
-define('SMTP_HOST', 'smtp.unibooks.com.ng');
-define('SMTP_USER', 'rainbow@unibooks.com.ng');
-define('SMTP_PASS', 'Xm66912ae');
-define('SMTP_FROM',  'rainbow@unibooks.com.ng');
-define('SMTP_NAME',  'Rainbow Picnic Plantoon 6');
+define('SMTP_HOST', 'smtp.gmail.com');
+define('SMTP_USER', 'your-email@gmail.com');
+define('SMTP_PASS', 'your-app-password');
+define('SMTP_FROM',  'no-reply@picnic.example');
+define('SMTP_NAME',  'Rainbow Picnic Bot');
+
 
 // ---------------------------------------------------------------------
 // 1. Composer autoload
